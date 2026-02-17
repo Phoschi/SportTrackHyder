@@ -5,6 +5,7 @@ import {
   requestLoginEmail,
   loginWithAccountCode,
   normalizeAccountCode,
+  fetchMyAccountCode,
   signOut,
   enqueueUpsert,
   syncCloudToLocal,
@@ -569,6 +570,19 @@ function initCloudUi() {
     localStorage.setItem("accountCode", formatted);
     codeDisplayEl.innerText = `Ton code: ${formatted}`;
     codeActionsRow.style.display = "flex";
+    if (userBarEls) userBarEls.codeEl.innerText = `Code : ${formatted}`;
+  }
+
+  function consumeAccountParam() {
+    const params = new URLSearchParams(window.location.search);
+    const account = params.get("account");
+    if (!account) return null;
+    setStoredAccountCode(account);
+    params.delete("account");
+    const qs = params.toString();
+    const nextUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+    window.history.replaceState({}, "", nextUrl);
+    return account;
   }
 
   function setSignedInUi(session) {
@@ -688,8 +702,7 @@ function initCloudUi() {
   });
 
   async function tryLoginFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    const account = params.get("account");
+    const account = consumeAccountParam();
     if (!account) return;
 
     showShell("auth");
@@ -697,11 +710,6 @@ function initCloudUi() {
     setCloudStatus("Connexion via lien...");
     const res = await loginWithAccountCode(account);
     if (res.ok) {
-      setStoredAccountCode(account);
-      params.delete("account");
-      const qs = params.toString();
-      const nextUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
-      window.history.replaceState({}, "", nextUrl);
       showShell("app");
       ensureAppRendered();
     } else {
@@ -710,6 +718,8 @@ function initCloudUi() {
   }
 
   getSession().then(async (session) => {
+    // Même si Supabase t'a déjà loggé via le magic link, on consomme le param `account` si présent.
+    consumeAccountParam();
     setSignedInUi(session);
     if (!session) {
       await tryLoginFromUrl();
@@ -720,6 +730,10 @@ function initCloudUi() {
       showShell("app");
       ensureAppRendered();
       updateUserBar(session);
+      if (!localStorage.getItem("accountCode")) {
+        const my = await fetchMyAccountCode(session.access_token);
+        if (my.ok && my.code) setStoredAccountCode(my.code);
+      }
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();
@@ -733,6 +747,11 @@ function initCloudUi() {
       showShell("app");
       ensureAppRendered();
       updateUserBar(session);
+      consumeAccountParam();
+      if (!localStorage.getItem("accountCode")) {
+        const my = await fetchMyAccountCode(session.access_token);
+        if (my.ok && my.code) setStoredAccountCode(my.code);
+      }
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();

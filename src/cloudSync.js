@@ -71,7 +71,9 @@ export async function requestLoginEmail(email) {
     body: JSON.stringify({ email })
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.ok) return { ok: false, reason: body.error || "request_failed" };
+  if (!res.ok || !body.ok) {
+    return { ok: false, reason: body.error || "request_failed", details: body.details, code: body.code };
+  }
   return { ok: true };
 }
 
@@ -91,7 +93,9 @@ export async function loginWithAccountCode(code) {
     body: JSON.stringify({ code: normalized })
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.ok) return { ok: false, reason: body.error || "invalid_credentials" };
+  if (!res.ok || !body.ok) {
+    return { ok: false, reason: body.error || "invalid_credentials", details: body.details, code: body.code };
+  }
   if (!body.session?.access_token || !body.session?.refresh_token) return { ok: false, reason: "bad_session" };
 
   const { error } = await supabase.auth.setSession({
@@ -100,6 +104,17 @@ export async function loginWithAccountCode(code) {
   });
   if (error) return { ok: false, reason: error.message || "set_session_failed" };
   return { ok: true };
+}
+
+export async function fetchMyAccountCode(accessToken) {
+  if (!accessToken) return { ok: false, reason: "missing_token" };
+  const res = await fetch("/api/my-code", {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) return { ok: false, reason: body.error || "request_failed", details: body.details };
+  return { ok: true, email: body.email, code: body.code };
 }
 
 export function enqueueUpsert(week, day, exoId, payload) {
