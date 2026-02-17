@@ -51,25 +51,55 @@ export function onAuthChange(handler) {
 }
 
 export async function signInWithEmailOtp(email) {
-  if (!supabase) throw new Error("Supabase non configuré");
-  return supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin }
-  });
+  throw new Error("Deprecated: use requestLoginEmail()");
 }
 
 export async function verifyEmailOtp(email, token) {
-  if (!supabase) throw new Error("Supabase non configuré");
-  return supabase.auth.verifyOtp({
-    email,
-    token,
-    type: "email"
-  });
+  throw new Error("Deprecated");
 }
 
 export async function signOut() {
   if (!supabase) return;
   await supabase.auth.signOut();
+}
+
+export async function requestLoginEmail(email) {
+  if (!isSupabaseConfigured) return { ok: false, reason: "not_configured" };
+  const res = await fetch("/api/send-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) return { ok: false, reason: body.error || "request_failed" };
+  return { ok: true };
+}
+
+export function normalizeAccountCode(code) {
+  return String(code || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 32);
+}
+
+export async function loginWithAccountCode(code) {
+  if (!supabase) return { ok: false, reason: "not_configured" };
+  const normalized = normalizeAccountCode(code);
+  const res = await fetch("/api/code-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: normalized })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) return { ok: false, reason: body.error || "invalid_credentials" };
+  if (!body.session?.access_token || !body.session?.refresh_token) return { ok: false, reason: "bad_session" };
+
+  const { error } = await supabase.auth.setSession({
+    access_token: body.session.access_token,
+    refresh_token: body.session.refresh_token
+  });
+  if (error) return { ok: false, reason: error.message || "set_session_failed" };
+  return { ok: true };
 }
 
 export function enqueueUpsert(week, day, exoId, payload) {

@@ -24,6 +24,11 @@ body {
   padding-bottom: 80px;
 }
 
+.auth-shell {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
 header {
   display: flex;
   justify-content: space-between;
@@ -438,6 +443,10 @@ canvas {
   color: var(--dim);
   font-weight: 700;
   line-height: 1.2;
+}
+
+.sync-row .sync-status {
+  flex: 1;
 }
 
 @keyframes fadeIn {

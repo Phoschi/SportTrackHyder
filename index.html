@@ -15,58 +15,71 @@
       <select id="weekSelector" class="week-select" onchange="changeWeek()"></select>
     </header>
 
-    <div id="cycle-info" class="program-info">Chargement...</div>
-    <div id="sync-section"></div>
-
-    <nav class="nav-days">
-      <button class="nav-btn active" onclick="showSection(event, 'lundi')">LUN</button>
-      <button class="nav-btn" onclick="showSection(event, 'mardi')">MAR</button>
-      <button class="nav-btn" onclick="showSection(event, 'mercredi')">MER</button>
-      <button class="nav-btn" onclick="showSection(event, 'jeudi')">JEU</button>
-      <button class="nav-btn" onclick="showSection(event, 'vendredi')">VEN</button>
-      <button class="nav-btn" onclick="showSection(event, 'dimanche')">DIM</button>
-      <button class="nav-btn history-btn" onclick="showSection(event, 'history')">
-        HISTORIQUE 📈
-      </button>
-    </nav>
-
-    <div id="workout-section" class="section-container active"></div>
-
-    <div id="history-section" class="section-container">
-      <div class="history-controls">
-        <div>
-          <div class="history-label">1. Choisir le Jour</div>
-          <select id="hist-day-select" class="hist-select" onchange="updateHistExoSelect()">
-            <option value="lundi">LUNDI (Upper 1)</option>
-            <option value="mardi">MARDI (Lower)</option>
-            <option value="jeudi">JEUDI (Dos/Biceps)</option>
-            <option value="vendredi">VENDREDI (Épaules/Tri)</option>
-            <option value="dimanche">DIMANCHE (Ischios/Lomb)</option>
-          </select>
-        </div>
-        <div>
-          <div class="history-label">2. Choisir l'Exercice</div>
-          <select id="hist-exo-select" class="hist-select" onchange="updateHistSetSelect()"></select>
-        </div>
-        <div>
-          <div class="history-label">3. Choisir la Série</div>
-          <select id="hist-set-select" class="hist-select" onchange="updateHistoryCharts()">
-            <option value="0">Série 1</option>
-            <option value="1">Série 2</option>
-            <option value="2">Série 3</option>
-            <option value="3">Série 4</option>
-            <option value="4">Série 5</option>
-          </select>
-        </div>
+    <div id="auth-shell" class="auth-shell">
+      <div class="program-info">
+        Connecte-toi pour retrouver tes données sur tous tes appareils.
       </div>
+      <div id="sync-section"></div>
+      <button id="skip-auth" class="sync-btn" type="button">Continuer en mode local</button>
+    </div>
 
-      <div class="chart-container">
-        <div class="chart-title chart-title--primary">ÉVOLUTION POIDS (KG)</div>
-        <canvas id="weightChart"></canvas>
-      </div>
-      <div class="chart-container">
-        <div class="chart-title chart-title--accent">ÉVOLUTION RÉPÉTITIONS</div>
-        <canvas id="repsChart"></canvas>
+    <div id="app-shell" style="display: none">
+      <div id="cycle-info" class="program-info">Chargement...</div>
+
+      <nav class="nav-days">
+        <button class="nav-btn active" onclick="showSection(event, 'lundi')">LUN</button>
+        <button class="nav-btn" onclick="showSection(event, 'mardi')">MAR</button>
+        <button class="nav-btn" onclick="showSection(event, 'mercredi')">MER</button>
+        <button class="nav-btn" onclick="showSection(event, 'jeudi')">JEU</button>
+        <button class="nav-btn" onclick="showSection(event, 'vendredi')">VEN</button>
+        <button class="nav-btn" onclick="showSection(event, 'dimanche')">DIM</button>
+        <button class="nav-btn history-btn" onclick="showSection(event, 'history')">
+          HISTORIQUE 📈
+        </button>
+      </nav>
+
+      <div id="workout-section" class="section-container active"></div>
+
+      <div id="history-section" class="section-container">
+        <div class="history-controls">
+          <div>
+            <div class="history-label">1. Choisir le Jour</div>
+            <select id="hist-day-select" class="hist-select" onchange="updateHistExoSelect()">
+              <option value="lundi">LUNDI (Upper 1)</option>
+              <option value="mardi">MARDI (Lower)</option>
+              <option value="jeudi">JEUDI (Dos/Biceps)</option>
+              <option value="vendredi">VENDREDI (Épaules/Tri)</option>
+              <option value="dimanche">DIMANCHE (Ischios/Lomb)</option>
+            </select>
+          </div>
+          <div>
+            <div class="history-label">2. Choisir l'Exercice</div>
+            <select
+              id="hist-exo-select"
+              class="hist-select"
+              onchange="updateHistSetSelect()"
+            ></select>
+          </div>
+          <div>
+            <div class="history-label">3. Choisir la Série</div>
+            <select id="hist-set-select" class="hist-select" onchange="updateHistoryCharts()">
+              <option value="0">Série 1</option>
+              <option value="1">Série 2</option>
+              <option value="2">Série 3</option>
+              <option value="3">Série 4</option>
+              <option value="4">Série 5</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <div class="chart-title chart-title--primary">ÉVOLUTION POIDS (KG)</div>
+          <canvas id="weightChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title chart-title--accent">ÉVOLUTION RÉPÉTITIONS</div>
+          <canvas id="repsChart"></canvas>
+        </div>
       </div>
     </div>
 
