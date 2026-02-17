@@ -8,6 +8,11 @@ Par défaut l’historique est stocké en `localStorage` : c’est **par apparei
 
 Pour un historique multi-appareils, le projet inclut une option **Cloud Sync** via **Supabase (gratuit)**.
 
+## Dashboard (PC)
+
+Une section **DASH ⚙️** permet de modifier le programme (exercices / séries / reps) sur PC.
+Le mobile sert ensuite à tracker l’entraînement, avec le même compte.
+
 ## Local
 
 ```sh
@@ -55,6 +60,10 @@ Notes :
 Ensuite, dans l’app, section **Cloud Sync** :
 - soit entrer ton **code de compte** → `Connexion`
 - soit entrer ton **email** → `Envoyer lien` (tu reçois un email avec un lien qui te reconnecte + ton code dans l’URL)
+
+Astuce : si tu as cliqué “Continuer en mode local”, tu peux revenir à l’écran de connexion via le bouton `Se connecter` (barre du haut).
+
+Ensuite, va dans **DASH ⚙️** pour planifier/modifier ton programme.
 
 Optionnel (recommandé pour tester) : afficher le code dans l’email Supabase
 - Supabase → **Authentication** → **Email Templates**

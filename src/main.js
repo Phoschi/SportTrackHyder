@@ -12,56 +12,14 @@ import {
   syncLocalToCloud
 } from "./cloudSync.js";
 import { isSupabaseConfigured } from "./supabase.js";
-
-// --- DATA DU PROGRAMME ---
-// SEMAINE 1 (IMPAIRE)
-const prog_S1 = {
-  lundi: [
-    { id: "poulie_h", name: "Poulie Haute Ext.", sets: 4, range: "10-15" },
-    { id: "poulie_b", name: "Poulie Basse Ext.", sets: 4, range: "10-15" },
-    { id: "dev_halt", name: "Dev. Haltères (Pecs)", sets: 3, range: "8-15" },
-    { id: "dev_smith", name: "Dev. Smith (Pecs)", sets: 3, range: "8-15" },
-    { id: "ecarte", name: "Écarté Poulie", sets: 4, range: "12-20" }
-  ],
-  mardi: [
-    { id: "presse", name: "Presse à Cuisses", sets: 4, range: "8-15" },
-    { id: "leg_ext", name: "Leg Extension Assis", sets: 4, range: "8-15" },
-    { id: "add_ext", name: "Adducteur Externe", sets: 4, range: "12-20" },
-    { id: "add_int", name: "Adducteur Interne", sets: 4, range: "12-20" },
-    { id: "mollets", name: "Mollets", sets: 4, range: "15-25" }
-  ],
-  mercredi: [{ id: "abdos_1", name: "Routine Abdos", type: "static" }],
-  jeudi: [
-    { id: "pullover", name: "Pull-over", sets: 4, range: "10-20" },
-    { id: "tir_vert", name: "Tirage Vert. Serré", sets: 4, range: "8-15" },
-    { id: "tir_horiz", name: "Tirage Horizontal", sets: 4, range: "8-15" },
-    { id: "curl_inc", name: "Curl Incliné", sets: 4, range: "8-15" },
-    { id: "curl_mart", name: "Curl Marteau Assis", sets: 4, range: "8-15" }
-  ],
-  vendredi: [
-    { id: "dev_mili", name: "Dev. Militaire Smith", sets: 3, range: "8-15" },
-    { id: "elev_lat", name: "Élévations Latérales", sets: 4, range: "15-25" },
-    { id: "arriere_ep", name: "Arrière d'Épaules", sets: 4, range: "20-30" },
-    { id: "tri_uni", name: "Triceps Unilatéral", sets: 5, range: "10-15" },
-    { id: "abdos_2", name: "Routine Abdos", type: "static" }
-  ],
-  dimanche: [
-    { id: "sdt_r", name: "Deadlift Roumain", sets: 4, range: "8-15" },
-    { id: "releve_buste", name: "Relevé Buste Lomb.", sets: 4, range: "8-15" },
-    { id: "curl_assis", name: "Curl Biceps Assis", sets: 4, range: "8-15" },
-    { id: "abdos_3", name: "Routine Abdos", type: "static" }
-  ]
-};
-
-// SEMAINE 2 (PAIRE) - Seul Mardi Change
-const prog_S2 = JSON.parse(JSON.stringify(prog_S1)); // Copie de base
-prog_S2.mardi = [
-  { id: "presse", name: "Presse à Cuisses", sets: 4, range: "8-15" },
-  { id: "leg_curl", name: "Leg Curl Assis", sets: 4, range: "8-15" }, // LE CHANGEMENT
-  { id: "add_ext", name: "Adducteur Externe", sets: 4, range: "12-20" },
-  { id: "add_int", name: "Adducteur Interne", sets: 4, range: "12-20" },
-  { id: "mollets", name: "Mollets", sets: 4, range: "15-25" }
-];
+import { DEFAULT_PROGRAM, cloneDefaultProgram } from "./defaultProgram.js";
+import {
+  cacheProgram,
+  ensureProgramShape,
+  fetchProgramFromCloud,
+  loadCachedProgram,
+  upsertProgramToCloud
+} from "./programSync.js";
 
 let currentWeek = 1;
 let currentSection = "lundi";
@@ -70,6 +28,16 @@ let repsChartInstance = null;
 let cloudStatusEl = null;
 let hasRenderedApp = false;
 let userBarEls = null;
+let currentSession = null;
+
+let programState = cloneDefaultProgram();
+let programUpdatedAtMs = 0;
+let programDirty = false;
+let programSaveTimer = null;
+let programLoaded = false;
+
+let dashboardUi = null;
+const dashboardState = { weekKey: "odd", day: "lundi" };
 
 function init() {
   const selector = document.getElementById("weekSelector");
@@ -85,6 +53,17 @@ function init() {
     currentWeek = Number.parseInt(savedWeek, 10);
     selector.value = String(currentWeek);
   }
+
+  const validDays = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  const validSections = new Set([...validDays, "history", "dashboard"]);
+  const savedSection = localStorage.getItem("lastSection");
+  if (savedSection && validSections.has(savedSection)) currentSection = savedSection;
+
+  const savedDashWeekKey = localStorage.getItem("dashWeekKey");
+  if (savedDashWeekKey === "odd" || savedDashWeekKey === "even") dashboardState.weekKey = savedDashWeekKey;
+  const savedDashDay = localStorage.getItem("dashDay");
+  if (savedDashDay && validDays.includes(savedDashDay)) dashboardState.day = savedDashDay;
+
   initGateUi();
   initCloudUi();
 }
@@ -92,18 +71,31 @@ function init() {
 function changeWeek() {
   currentWeek = Number.parseInt(document.getElementById("weekSelector").value, 10);
   localStorage.setItem("lastWeek", String(currentWeek));
-  if (currentSection !== "history") renderDay();
+  if (currentSection === "history") updateHistoryCharts();
+  else if (currentSection === "dashboard") renderDashboard();
+  else renderDay();
 }
 
-function showSection(evt, sectionId) {
+function setActiveNav(sectionId) {
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    const id = btn.dataset.section;
+    if (id && id === sectionId) btn.classList.add("active");
+    else btn.classList.remove("active");
+  });
+}
+
+function showSection(_evt, sectionId) {
   currentSection = sectionId;
-  document.querySelectorAll(".nav-btn").forEach((btn) => btn.classList.remove("active"));
-  if (evt?.target) evt.target.classList.add("active");
+  localStorage.setItem("lastSection", sectionId);
+  setActiveNav(sectionId);
   document.querySelectorAll(".section-container").forEach((el) => el.classList.remove("active"));
 
   if (sectionId === "history") {
     document.getElementById("history-section").classList.add("active");
-    updateHistoryCharts();
+    updateHistExoSelect();
+  } else if (sectionId === "dashboard") {
+    document.getElementById("dashboard-section").classList.add("active");
+    renderDashboard();
   } else {
     document.getElementById("workout-section").classList.add("active");
     renderDay();
@@ -111,18 +103,19 @@ function showSection(evt, sectionId) {
 }
 
 function renderSection() {
-  if (currentSection === "history") updateHistoryCharts();
-  else renderDay();
+  showSection(null, currentSection);
 }
 
 // --- RENDER WORKOUT ---
 function renderDay() {
+  loadProgramFromCacheOrDefault();
   const container = document.getElementById("workout-section");
   container.innerHTML = "";
 
   // Déterminer si Semaine 1 (Impaire) ou Semaine 2 (Paire)
   const isWeek1 = currentWeek % 2 !== 0;
-  const activeProgram = isWeek1 ? prog_S1 : prog_S2;
+  const weekKey = isWeek1 ? "odd" : "even";
+  const activeProgram = programState?.weeks?.[weekKey] || DEFAULT_PROGRAM.weeks[weekKey];
   const cycleText = isWeek1 ? "Cycle : SEMAINE 1 (Impaire)" : "Cycle : SEMAINE 2 (Paire)";
 
   document.getElementById("cycle-info").innerText = cycleText;
@@ -135,6 +128,7 @@ function renderDay() {
   }
 
   activeProgram[currentSection].forEach((exo) => {
+    if (!exo?.id) return;
     const card = document.createElement("div");
     card.className = "card";
 
@@ -160,11 +154,13 @@ function renderDay() {
     }
 
     // --- CAS STANDARD (MUSCU) ---
+    const setCount = Math.max(1, Number.parseInt(exo.sets, 10) || 1);
+    const rangeText = exo.range || "";
     card.innerHTML = `
       <div class="card-header">
         <div>
           <div class="exo-title">${exo.name}</div>
-          <div class="exo-subtitle">${exo.sets} Séries | ${exo.range} Reps</div>
+          <div class="exo-subtitle">${setCount} Séries | ${rangeText} Reps</div>
         </div>
       </div>
     `;
@@ -173,7 +169,7 @@ function renderDay() {
     setsContainer.className = "sets-container";
     const exoData = getData(currentWeek, currentSection, exo.id) || { sets: [] };
 
-    for (let i = 0; i < exo.sets; i++) {
+    for (let i = 0; i < setCount; i++) {
       const setData = exoData.sets[i] || { kg: "", reps: "", done: false };
       const summaryText =
         setData.kg || setData.reps ? `${setData.kg || 0}kg x ${setData.reps || 0}` : "À faire";
@@ -302,10 +298,11 @@ function calculateProgressionHTML(exoId, setIndex, currentKg, currentReps) {
 }
 
 function getExoIndex(exoId) {
-  // On doit chercher dans le programme ACTIF (S1 ou S2)
+  loadProgramFromCacheOrDefault();
   const isWeek1 = currentWeek % 2 !== 0;
-  const activeProgram = isWeek1 ? prog_S1 : prog_S2;
-  return activeProgram[currentSection].findIndex((e) => e.id === exoId);
+  const weekKey = isWeek1 ? "odd" : "even";
+  const activeProgram = programState?.weeks?.[weekKey] || DEFAULT_PROGRAM.weeks[weekKey];
+  return (activeProgram[currentSection] || []).findIndex((e) => e.id === exoId);
 }
 
 function getKey(week, day, exoId) {
@@ -323,30 +320,37 @@ function getData(week, day, exoId) {
 
 // --- HISTORY ---
 function updateHistExoSelect() {
+  loadProgramFromCacheOrDefault();
   const day = document.getElementById("hist-day-select").value;
   const exoSelect = document.getElementById("hist-exo-select");
   exoSelect.innerHTML = "";
 
-  // Pour l'historique, on utilise la S1 comme référence de liste (ou merge S1/S2 pour mardi)
-  // Astuce : On liste tout ce qui est possible
-  let exosToList = [];
-  if (day === "mardi") {
-    // Fusion des exos de S1 et S2 pour mardi
-    exosToList = [...prog_S1.mardi];
-    // Ajouter Leg Curl s'il n'y est pas (c'est le seul qui change)
-    if (!exosToList.find((e) => e.id === "leg_curl")) exosToList.push({ id: "leg_curl", name: "Leg Curl Assis" });
-  } else {
-    exosToList = prog_S1[day] || [];
+  const odd = programState?.weeks?.odd || DEFAULT_PROGRAM.weeks.odd;
+  const even = programState?.weeks?.even || DEFAULT_PROGRAM.weeks.even;
+  const merged = [...(odd[day] || []), ...(even[day] || [])];
+  const uniq = new Map();
+  merged.forEach((exo) => {
+    if (!exo || exo.type === "static") return;
+    if (!uniq.has(exo.id)) uniq.set(exo.id, exo);
+  });
+  const exosToList = [...uniq.values()];
+
+  if (exosToList.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.text = "Aucun exercice";
+    opt.disabled = true;
+    opt.selected = true;
+    exoSelect.add(opt);
+    updateHistSetSelect();
+    return;
   }
 
   exosToList.forEach((exo) => {
-    // On ne montre PAS les abdos dans l'historique
-    if (exo.type !== "static") {
-      const opt = document.createElement("option");
-      opt.value = exo.id;
-      opt.text = exo.name;
-      exoSelect.add(opt);
-    }
+    const opt = document.createElement("option");
+    opt.value = exo.id;
+    opt.text = exo.name;
+    exoSelect.add(opt);
   });
   updateHistSetSelect();
 }
@@ -359,6 +363,13 @@ function updateHistoryCharts() {
   const day = document.getElementById("hist-day-select").value;
   const exoId = document.getElementById("hist-exo-select").value;
   const setIndex = Number.parseInt(document.getElementById("hist-set-select").value, 10);
+  if (!exoId) {
+    if (weightChartInstance) weightChartInstance.destroy();
+    if (repsChartInstance) repsChartInstance.destroy();
+    weightChartInstance = null;
+    repsChartInstance = null;
+    return;
+  }
   const labels = [];
   const dataKg = [];
   const dataReps = [];
@@ -446,9 +457,12 @@ function showShell(name) {
 function ensureAppRendered() {
   if (hasRenderedApp) return;
   hasRenderedApp = true;
+  loadProgramFromCacheOrDefault();
   initUserBar();
-  renderSection();
+  updateUserBar(currentSession);
+  initDashboardUi();
   updateHistExoSelect();
+  renderSection();
 }
 
 function initUserBar() {
@@ -456,9 +470,16 @@ function initUserBar() {
   const bar = document.getElementById("user-bar");
   const emailEl = document.getElementById("user-email");
   const codeEl = document.getElementById("user-code");
+  const loginBtn = document.getElementById("user-login");
   const logoutBtn = document.getElementById("user-logout");
-  if (!bar || !emailEl || !codeEl || !logoutBtn) return;
-  userBarEls = { bar, emailEl, codeEl, logoutBtn };
+  if (!bar || !emailEl || !codeEl || !loginBtn || !logoutBtn) return;
+  userBarEls = { bar, emailEl, codeEl, loginBtn, logoutBtn };
+
+  loginBtn.addEventListener("click", () => {
+    localStorage.removeItem("skipAuth");
+    showShell("auth");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
 
   logoutBtn.addEventListener("click", async () => {
     await signOut();
@@ -467,14 +488,551 @@ function initUserBar() {
 
 function updateUserBar(session) {
   if (!userBarEls) return;
-  if (!session) {
+  const code = localStorage.getItem("accountCode");
+  const show = isSupabaseConfigured || Boolean(code);
+  if (!show) {
     userBarEls.bar.style.display = "none";
     return;
   }
+
   userBarEls.bar.style.display = "flex";
-  userBarEls.emailEl.innerText = `Connecté : ${session.user.email}`;
-  const code = localStorage.getItem("accountCode");
   userBarEls.codeEl.innerText = code ? `Code : ${code}` : "";
+
+  if (session) {
+    userBarEls.emailEl.innerText = `Connecté : ${session.user.email}`;
+    userBarEls.loginBtn.style.display = "none";
+    userBarEls.logoutBtn.style.display = "inline-flex";
+    return;
+  }
+
+  userBarEls.emailEl.innerText = isSupabaseConfigured ? "Déconnecté" : "Mode local";
+  userBarEls.loginBtn.style.display = isSupabaseConfigured ? "inline-flex" : "none";
+  userBarEls.logoutBtn.style.display = "none";
+}
+
+function loadProgramFromCacheOrDefault() {
+  if (programLoaded) return;
+  programLoaded = true;
+  const cached = loadCachedProgram();
+  if (cached?.program) {
+    const shaped = ensureProgramShape(cached.program);
+    programState = shaped;
+    programUpdatedAtMs = shaped === cached.program ? cached.updatedAtMs : Date.now();
+    cacheProgram(programState, programUpdatedAtMs);
+    return;
+  }
+  programState = cloneDefaultProgram();
+  programUpdatedAtMs = Date.now();
+  cacheProgram(programState, programUpdatedAtMs);
+}
+
+async function refreshProgramFromCloud(session) {
+  if (!session || !isSupabaseConfigured) return;
+  loadProgramFromCacheOrDefault();
+
+  const res = await fetchProgramFromCloud(session.user.id);
+  if (res.ok) {
+    const remoteProgram = ensureProgramShape(res.program);
+    const remoteTs =
+      typeof res.updatedAtMs === "number" ? res.updatedAtMs : Number.parseInt(String(res.updatedAtMs || 0), 10) || 0;
+    if (remoteTs > programUpdatedAtMs) {
+      programState = remoteProgram;
+      programUpdatedAtMs = remoteTs;
+      programDirty = false;
+      cacheProgram(programState, programUpdatedAtMs);
+      if (dashboardUi) renderDashboard();
+      updateHistExoSelect();
+      renderSection();
+      return;
+    }
+    if (remoteTs > 0 && remoteTs < programUpdatedAtMs) {
+      await upsertProgramToCloud(session.user.id, programState, programUpdatedAtMs);
+    }
+    return;
+  }
+
+  if (res.reason === "not_found") {
+    await upsertProgramToCloud(session.user.id, programState, programUpdatedAtMs);
+  }
+}
+
+function updateProgramStatus(text) {
+  if (!dashboardUi?.statusEl) return;
+  if (text) {
+    dashboardUi.statusEl.innerText = text;
+    return;
+  }
+  if (!currentSession) {
+    dashboardUi.statusEl.innerText = isSupabaseConfigured ? "Déconnecté" : "Mode local";
+    return;
+  }
+  dashboardUi.statusEl.innerText = programDirty ? "Modifs en cours..." : "Enregistré";
+}
+
+function scheduleProgramSave() {
+  window.clearTimeout(programSaveTimer);
+  programSaveTimer = window.setTimeout(() => {
+    void saveProgramNow();
+  }, 800);
+}
+
+function touchProgram() {
+  loadProgramFromCacheOrDefault();
+  programUpdatedAtMs = Date.now();
+  cacheProgram(programState, programUpdatedAtMs);
+}
+
+function markProgramDirty() {
+  touchProgram();
+  programDirty = true;
+  updateProgramStatus();
+  scheduleProgramSave();
+}
+
+async function saveProgramNow() {
+  loadProgramFromCacheOrDefault();
+  if (!programUpdatedAtMs) touchProgram();
+  else cacheProgram(programState, programUpdatedAtMs);
+  const savingAtMs = programUpdatedAtMs;
+
+  if (!currentSession) {
+    if (programUpdatedAtMs === savingAtMs) programDirty = false;
+    updateProgramStatus(programDirty ? "Modifs en cours..." : "Sauvé en local");
+    return { ok: true, local: true };
+  }
+
+  updateProgramStatus("Sauvegarde...");
+  const res = await upsertProgramToCloud(currentSession.user.id, programState, savingAtMs);
+  if (!res.ok) {
+    programDirty = true;
+    updateProgramStatus(`Erreur sauvegarde (${res.details || res.reason})`);
+    return { ok: false, reason: res.reason, details: res.details };
+  }
+  if (programUpdatedAtMs !== savingAtMs) {
+    programDirty = true;
+    updateProgramStatus();
+    return { ok: true, stale: true };
+  }
+  programDirty = false;
+  updateProgramStatus("Enregistré");
+  return { ok: true };
+}
+
+function generateExerciseId() {
+  if (globalThis.crypto?.randomUUID) return `exo_${globalThis.crypto.randomUUID().slice(0, 8)}`;
+  return `exo_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ensureProgramDayArray(weekKey, day) {
+  loadProgramFromCacheOrDefault();
+  if (!programState.weeks) programState.weeks = { odd: {}, even: {} };
+  if (!programState.weeks[weekKey]) programState.weeks[weekKey] = {};
+  if (!Array.isArray(programState.weeks[weekKey][day])) programState.weeks[weekKey][day] = [];
+  return programState.weeks[weekKey][day];
+}
+
+function initDashboardUi() {
+  if (dashboardUi) return;
+  const root = document.getElementById("dashboard-root");
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="dashboard-layout">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="exo-title">Dashboard</div>
+            <div class="exo-subtitle">Planifie sur PC, track sur mobile</div>
+          </div>
+          <div id="program-status" class="exo-subtitle"></div>
+        </div>
+        <div class="sync-card-body">
+          <div class="dashboard-controls">
+            <select id="dash-cycle" class="hist-select">
+              <option value="odd">Semaine impaire (S1)</option>
+              <option value="even">Semaine paire (S2)</option>
+            </select>
+            <select id="dash-day" class="hist-select">
+              <option value="lundi">Lundi</option>
+              <option value="mardi">Mardi</option>
+              <option value="mercredi">Mercredi</option>
+              <option value="jeudi">Jeudi</option>
+              <option value="vendredi">Vendredi</option>
+              <option value="samedi">Samedi</option>
+              <option value="dimanche">Dimanche</option>
+            </select>
+            <button id="dash-add" class="sync-btn primary" type="button">+ Exercice</button>
+            <button id="dash-save" class="sync-btn" type="button">Sauver</button>
+            <button id="dash-reset" class="sync-btn danger" type="button">Reset</button>
+          </div>
+          <div id="dash-list" class="dash-list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="exo-title">Outils</div>
+            <div class="exo-subtitle">Sauvegarde, sync & partage</div>
+          </div>
+        </div>
+        <div class="sync-card-body">
+          <div class="sync-status">
+            Les changements du programme sont sauvegardés automatiquement quand tu es connecté.
+          </div>
+          <div class="sync-status">Programme</div>
+          <div class="sync-row">
+            <button id="dash-export" class="sync-btn" type="button">Exporter JSON</button>
+            <button id="dash-import" class="sync-btn" type="button">Importer JSON</button>
+          </div>
+          <div class="sync-row">
+            <button id="dash-prog-pull" class="sync-btn" type="button">Programme ↓</button>
+            <button id="dash-prog-push" class="sync-btn" type="button">Programme ↑</button>
+          </div>
+          <div class="sync-status">Historique (séries / poids / reps)</div>
+          <div class="sync-row">
+            <button id="dash-sync-pull" class="sync-btn" type="button">Historique ↓</button>
+            <button id="dash-sync-push" class="sync-btn" type="button">Historique ↑</button>
+          </div>
+          <div id="dash-msg" class="sync-status"></div>
+          <div class="sync-status">
+            Astuce : tu peux planifier sur PC, puis tracker sur mobile avec le même compte (code).
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const cycleSelect = document.getElementById("dash-cycle");
+  const daySelect = document.getElementById("dash-day");
+  const listEl = document.getElementById("dash-list");
+  const statusEl = document.getElementById("program-status");
+  const addBtn = document.getElementById("dash-add");
+  const saveBtn = document.getElementById("dash-save");
+  const resetBtn = document.getElementById("dash-reset");
+  const exportBtn = document.getElementById("dash-export");
+  const importBtn = document.getElementById("dash-import");
+  const progPullBtn = document.getElementById("dash-prog-pull");
+  const progPushBtn = document.getElementById("dash-prog-push");
+  const syncPullBtn = document.getElementById("dash-sync-pull");
+  const syncPushBtn = document.getElementById("dash-sync-push");
+  const msgEl = document.getElementById("dash-msg");
+
+  dashboardUi = {
+    root,
+    cycleSelect,
+    daySelect,
+    listEl,
+    statusEl,
+    addBtn,
+    saveBtn,
+    resetBtn,
+    exportBtn,
+    importBtn,
+    progPullBtn,
+    progPushBtn,
+    syncPullBtn,
+    syncPushBtn,
+    msgEl
+  };
+
+  cycleSelect.value = dashboardState.weekKey;
+  daySelect.value = dashboardState.day;
+
+  cycleSelect.addEventListener("change", () => {
+    dashboardState.weekKey = cycleSelect.value;
+    localStorage.setItem("dashWeekKey", dashboardState.weekKey);
+    renderDashboard();
+  });
+  daySelect.addEventListener("change", () => {
+    dashboardState.day = daySelect.value;
+    localStorage.setItem("dashDay", dashboardState.day);
+    renderDashboard();
+  });
+
+  addBtn.addEventListener("click", () => {
+    const dayArr = ensureProgramDayArray(dashboardState.weekKey, dashboardState.day);
+    dayArr.push({ id: generateExerciseId(), name: "Nouvel exercice", sets: 3, range: "8-12" });
+    markProgramDirty();
+    renderDashboard();
+  });
+
+  saveBtn.addEventListener("click", async () => {
+    await saveProgramNow();
+  });
+
+  resetBtn.addEventListener("click", async () => {
+    const ok = window.confirm("Remettre le programme par défaut ? (cela écrasera tes modifications)");
+    if (!ok) return;
+    programState = cloneDefaultProgram();
+    programUpdatedAtMs = Date.now();
+    cacheProgram(programState, programUpdatedAtMs);
+    programDirty = true;
+    renderDashboard();
+    await saveProgramNow();
+    renderSection();
+    updateHistExoSelect();
+  });
+
+  exportBtn.addEventListener("click", async () => {
+    loadProgramFromCacheOrDefault();
+    const txt = JSON.stringify(programState, null, 2);
+    try {
+      await navigator.clipboard.writeText(txt);
+      updateProgramStatus("JSON copié");
+    } catch {
+      window.prompt("Copie ce JSON:", txt);
+    }
+  });
+
+  importBtn.addEventListener("click", async () => {
+    const txt = window.prompt("Colle ici le JSON du programme :");
+    if (!txt) return;
+    try {
+      const parsed = JSON.parse(txt);
+      const shaped = ensureProgramShape(parsed);
+      programState = shaped;
+      programUpdatedAtMs = Date.now();
+      cacheProgram(programState, programUpdatedAtMs);
+      markProgramDirty();
+      renderDashboard();
+      await saveProgramNow();
+      renderSection();
+      updateHistExoSelect();
+    } catch {
+      window.alert("JSON invalide");
+    }
+  });
+
+  function setMsg(text) {
+    msgEl.innerText = text || "";
+  }
+
+  progPullBtn.addEventListener("click", async () => {
+    if (!currentSession) {
+      setMsg("Connecte-toi pour synchroniser.");
+      return;
+    }
+    if (programDirty) {
+      const ok = window.confirm("Tu as des modifications non sauvegardées. Écraser avec le cloud ?");
+      if (!ok) return;
+    }
+    setMsg("Récupération du programme...");
+    const res = await fetchProgramFromCloud(currentSession.user.id);
+    if (!res.ok) {
+      setMsg("Erreur programme: " + (res.details || res.reason));
+      return;
+    }
+    programState = ensureProgramShape(res.program);
+    const remoteTs =
+      typeof res.updatedAtMs === "number" ? res.updatedAtMs : Number.parseInt(String(res.updatedAtMs || 0), 10) || 0;
+    programUpdatedAtMs = remoteTs || Date.now();
+    programDirty = false;
+    cacheProgram(programState, programUpdatedAtMs);
+    updateProgramStatus("Programme récupéré");
+    renderDashboard();
+    updateHistExoSelect();
+    renderSection();
+    setMsg("Programme récupéré.");
+  });
+
+  progPushBtn.addEventListener("click", async () => {
+    if (!currentSession) {
+      setMsg("Connecte-toi pour synchroniser.");
+      return;
+    }
+    setMsg("Envoi du programme...");
+    const res = await saveProgramNow();
+    if (!res?.ok) setMsg("Erreur programme: " + (res?.details || res?.reason || "sauvegarde"));
+    else setMsg(res.stale ? "Programme envoyé (modifs plus récentes en cours)." : "Programme envoyé.");
+  });
+
+  syncPullBtn.addEventListener("click", async () => {
+    if (!currentSession) {
+      setMsg("Connecte-toi pour synchroniser.");
+      return;
+    }
+    setMsg("Sync historique depuis le cloud...");
+    const res = await syncCloudToLocal();
+    if (!res.ok) setMsg("Erreur sync: " + res.reason);
+    else {
+      setMsg(`OK: ${res.updated} entrées mises à jour`);
+      renderSection();
+    }
+  });
+
+  syncPushBtn.addEventListener("click", async () => {
+    if (!currentSession) {
+      setMsg("Connecte-toi pour synchroniser.");
+      return;
+    }
+    setMsg("Sync historique vers le cloud...");
+    const res = await syncLocalToCloud();
+    if (!res.ok) setMsg("Erreur sync: " + res.reason);
+    else setMsg(`OK: ${res.pushed} entrées envoyées`);
+  });
+}
+
+function renderDashboard() {
+  loadProgramFromCacheOrDefault();
+  initDashboardUi();
+  if (!dashboardUi?.listEl) return;
+
+  updateProgramStatus();
+
+  dashboardUi.cycleSelect.value = dashboardState.weekKey;
+  dashboardUi.daySelect.value = dashboardState.day;
+
+  const listEl = dashboardUi.listEl;
+  listEl.innerHTML = "";
+
+  const dayArr = ensureProgramDayArray(dashboardState.weekKey, dashboardState.day);
+  if (dayArr.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "sync-status";
+    empty.innerText = "Aucun exercice pour ce jour. Ajoute-en un.";
+    listEl.appendChild(empty);
+    return;
+  }
+
+  dayArr.forEach((exo, idx) => {
+    const isStatic = exo?.type === "static";
+    const row = document.createElement("div");
+    row.className = "dash-exo";
+
+    const typeField = document.createElement("div");
+    typeField.className = "dash-field";
+    typeField.innerHTML = `<div class="dash-label">Type</div>`;
+    const typeSelect = document.createElement("select");
+    typeSelect.className = "hist-select";
+    typeSelect.innerHTML = `
+      <option value="work">Muscu</option>
+      <option value="static">Routine</option>
+    `;
+    typeSelect.value = isStatic ? "static" : "work";
+    typeField.appendChild(typeSelect);
+
+    const nameField = document.createElement("div");
+    nameField.className = "dash-field";
+    nameField.innerHTML = `<div class="dash-label">Nom</div>`;
+    const nameInput = document.createElement("input");
+    nameInput.className = "sync-input";
+    nameInput.type = "text";
+    nameInput.value = exo?.name || "";
+    nameField.appendChild(nameInput);
+
+    const main = document.createElement("div");
+    main.className = "dash-exo-main";
+    main.appendChild(typeField);
+    main.appendChild(nameField);
+
+    const setsField = document.createElement("div");
+    setsField.className = "dash-field";
+    setsField.innerHTML = `<div class="dash-label">Séries</div>`;
+    const setsInput = document.createElement("input");
+    setsInput.className = "sync-input";
+    setsInput.type = "number";
+    setsInput.min = "1";
+    setsInput.max = "10";
+    setsInput.value = String(exo?.sets ?? 3);
+    setsField.appendChild(setsInput);
+
+    const rangeField = document.createElement("div");
+    rangeField.className = "dash-field";
+    rangeField.innerHTML = `<div class="dash-label">Reps</div>`;
+    const rangeInput = document.createElement("input");
+    rangeInput.className = "sync-input";
+    rangeInput.type = "text";
+    rangeInput.placeholder = "8-12";
+    rangeInput.value = exo?.range || "";
+    rangeField.appendChild(rangeInput);
+
+    if (!isStatic) {
+      main.appendChild(setsField);
+      main.appendChild(rangeField);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "dash-exo-actions";
+
+    const upBtn = document.createElement("button");
+    upBtn.className = "dash-mini-btn";
+    upBtn.type = "button";
+    upBtn.innerText = "↑";
+    upBtn.title = "Monter";
+    upBtn.disabled = idx === 0;
+
+    const downBtn = document.createElement("button");
+    downBtn.className = "dash-mini-btn";
+    downBtn.type = "button";
+    downBtn.innerText = "↓";
+    downBtn.title = "Descendre";
+    downBtn.disabled = idx === dayArr.length - 1;
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "dash-mini-btn danger";
+    delBtn.type = "button";
+    delBtn.innerText = "✕";
+    delBtn.title = "Supprimer";
+
+    actions.appendChild(upBtn);
+    actions.appendChild(downBtn);
+    actions.appendChild(delBtn);
+
+    row.appendChild(main);
+    row.appendChild(actions);
+    listEl.appendChild(row);
+
+    nameInput.addEventListener("input", () => {
+      exo.name = nameInput.value;
+      markProgramDirty();
+    });
+
+    typeSelect.addEventListener("change", () => {
+      if (typeSelect.value === "static") {
+        exo.type = "static";
+        delete exo.sets;
+        delete exo.range;
+      } else {
+        delete exo.type;
+        exo.sets = Number.parseInt(setsInput.value, 10) || 3;
+        exo.range = rangeInput.value || "8-12";
+      }
+      markProgramDirty();
+      renderDashboard();
+    });
+
+    setsInput.addEventListener("input", () => {
+      const v = Number.parseInt(setsInput.value, 10);
+      exo.sets = Number.isFinite(v) ? Math.min(10, Math.max(1, v)) : 3;
+      markProgramDirty();
+    });
+
+    rangeInput.addEventListener("input", () => {
+      exo.range = rangeInput.value;
+      markProgramDirty();
+    });
+
+    upBtn.addEventListener("click", () => {
+      dayArr.splice(idx - 1, 0, dayArr.splice(idx, 1)[0]);
+      markProgramDirty();
+      renderDashboard();
+    });
+
+    downBtn.addEventListener("click", () => {
+      dayArr.splice(idx + 1, 0, dayArr.splice(idx, 1)[0]);
+      markProgramDirty();
+      renderDashboard();
+    });
+
+    delBtn.addEventListener("click", () => {
+      const ok = window.confirm("Supprimer cet exercice ?");
+      if (!ok) return;
+      dayArr.splice(idx, 1);
+      markProgramDirty();
+      renderDashboard();
+    });
+  });
 }
 
 function initGateUi() {
@@ -557,6 +1115,7 @@ function initCloudUi() {
   const pushBtn = document.getElementById("cloud-push");
   const logoutBtn = document.getElementById("cloud-logout");
   emailInput.value = localStorage.getItem("cloudEmail") || "";
+  codeInput.value = localStorage.getItem("accountCode") || "";
 
   function formatAccountCode(code) {
     const normalized = normalizeAccountCode(code);
@@ -726,6 +1285,7 @@ function initCloudUi() {
       session = await getSession();
       setSignedInUi(session);
     }
+    currentSession = session;
     if (session) {
       showShell("app");
       ensureAppRendered();
@@ -734,6 +1294,7 @@ function initCloudUi() {
         const my = await fetchMyAccountCode(session.access_token);
         if (my.ok && my.code) setStoredAccountCode(my.code);
       }
+      await refreshProgramFromCloud(session);
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();
@@ -743,6 +1304,7 @@ function initCloudUi() {
 
   onAuthChange(async (session) => {
     setSignedInUi(session);
+    currentSession = session;
     if (session) {
       showShell("app");
       ensureAppRendered();
@@ -752,6 +1314,7 @@ function initCloudUi() {
         const my = await fetchMyAccountCode(session.access_token);
         if (my.ok && my.code) setStoredAccountCode(my.code);
       }
+      await refreshProgramFromCloud(session);
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();
@@ -759,10 +1322,11 @@ function initCloudUi() {
     } else {
       // Reset UI to clean state
       emailInput.value = localStorage.getItem("cloudEmail") || "";
-      codeInput.value = "";
+      codeInput.value = localStorage.getItem("accountCode") || "";
       const skipAuth = localStorage.getItem("skipAuth") === "1";
       if (!skipAuth) showShell("auth");
       updateUserBar(null);
+      updateProgramStatus();
     }
   });
 }

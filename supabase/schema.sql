@@ -52,3 +52,40 @@ create table if not exists public.account_profiles (
 
 alter table public.account_profiles enable row level security;
 -- Pas de policy = inaccessible aux clients. Utiliser la `service_role` via les routes `/api/*`.
+
+-- Programme d'entraînement (éditable par l'utilisateur depuis le dashboard).
+create table if not exists public.workout_programs (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  program jsonb not null,
+  updated_at_ms bigint not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id)
+);
+
+alter table public.workout_programs enable row level security;
+
+drop policy if exists "workout_programs_select_own" on public.workout_programs;
+drop policy if exists "workout_programs_insert_own" on public.workout_programs;
+drop policy if exists "workout_programs_update_own" on public.workout_programs;
+drop policy if exists "workout_programs_delete_own" on public.workout_programs;
+
+create policy "workout_programs_select_own"
+on public.workout_programs for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "workout_programs_insert_own"
+on public.workout_programs for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "workout_programs_update_own"
+on public.workout_programs for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "workout_programs_delete_own"
+on public.workout_programs for delete
+to authenticated
+using (auth.uid() = user_id);

@@ -28,15 +28,50 @@ function getLocalPayload(key) {
   }
 }
 
+function toMs(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const n = Number.parseInt(String(value || ""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function upsertPayload({ userId, week, day, exoId, payload }) {
   if (!supabase) return Promise.resolve({ ok: false, reason: "not_configured" });
-  const updatedAtMs = typeof payload?._ts === "number" ? payload._ts : Date.now();
+  const updatedAtMs = toMs(payload?._ts) || Date.now();
   const row = { user_id: userId, week, day, exo_id: exoId, payload, updated_at_ms: updatedAtMs };
   return supabase.from(TABLE).upsert(row, { onConflict: "user_id,week,day,exo_id" });
 }
 
 let pending = new Map();
 let flushTimer = null;
+
+function scheduleFlush(delayMs = 800) {
+  if (flushTimer) return;
+  flushTimer = window.setTimeout(() => void flushPending(), delayMs);
+}
+
+async function flushPending() {
+  flushTimer = null;
+  if (pending.size === 0) return;
+  const session = await getSession();
+  if (!session) return;
+
+  const userId = session.user.id;
+  const batch = [...pending.values()];
+  pending.clear();
+
+  const results = await Promise.allSettled(batch.map((item) => upsertPayload({ userId, ...item })));
+  let hadFailures = false;
+  results.forEach((res, idx) => {
+    const item = batch[idx];
+    const ok = res.status === "fulfilled" && !res.value?.error;
+    if (ok) return;
+    const attempts = (item.attempts ?? 0) + 1;
+    if (attempts >= 3) return;
+    pending.set(`${item.week}|${item.day}|${item.exoId}`, { ...item, attempts });
+    hadFailures = true;
+  });
+  if (hadFailures) scheduleFlush(2000);
+}
 
 export async function getSession() {
   if (!supabase) return null;
@@ -48,14 +83,6 @@ export function onAuthChange(handler) {
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((_event, session) => handler(session));
   return () => data.subscription.unsubscribe();
-}
-
-export async function signInWithEmailOtp(email) {
-  throw new Error("Deprecated: use requestLoginEmail()");
-}
-
-export async function verifyEmailOtp(email, token) {
-  throw new Error("Deprecated");
 }
 
 export async function signOut() {
@@ -120,17 +147,9 @@ export async function fetchMyAccountCode(accessToken) {
 export function enqueueUpsert(week, day, exoId, payload) {
   if (!isSupabaseConfigured) return;
   const key = `${week}|${day}|${exoId}`;
-  pending.set(key, { week, day, exoId, payload });
-  if (flushTimer) return;
-  flushTimer = window.setTimeout(async () => {
-    flushTimer = null;
-    const batch = [...pending.values()];
-    pending.clear();
-    const session = await getSession();
-    if (!session) return;
-    const userId = session.user.id;
-    await Promise.allSettled(batch.map((item) => upsertPayload({ userId, ...item })));
-  }, 800);
+  const prev = pending.get(key);
+  pending.set(key, { week, day, exoId, payload, attempts: prev?.attempts ?? 0 });
+  scheduleFlush();
 }
 
 export async function syncCloudToLocal() {
@@ -146,8 +165,8 @@ export async function syncCloudToLocal() {
   for (const row of data) {
     const key = `${KEY_PREFIX}${row.week}_${row.day}_${row.exo_id}`;
     const local = getLocalPayload(key);
-    const localTs = typeof local?._ts === "number" ? local._ts : 0;
-    const remoteTs = typeof row.updated_at_ms === "number" ? row.updated_at_ms : 0;
+    const localTs = toMs(local?._ts);
+    const remoteTs = toMs(row.updated_at_ms);
     if (!local || remoteTs >= localTs) {
       const payload = row.payload ?? {};
       payload._ts = remoteTs || Date.now();
@@ -171,7 +190,7 @@ export async function syncLocalToCloud() {
     if (!parsed) continue;
     const payload = getLocalPayload(key);
     if (!payload) continue;
-    const updatedAtMs = typeof payload._ts === "number" ? payload._ts : Date.now();
+    const updatedAtMs = toMs(payload._ts) || Date.now();
     rows.push({
       user_id: userId,
       week: parsed.week,

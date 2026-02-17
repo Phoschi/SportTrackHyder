@@ -29,19 +29,38 @@
           <div id="user-email"></div>
           <div id="user-code" class="user-bar__dim"></div>
         </div>
-        <button id="user-logout" class="sync-btn danger" type="button">Déconnexion</button>
+        <div class="user-bar__actions">
+          <button id="user-login" class="sync-btn primary" type="button">Se connecter</button>
+          <button id="user-logout" class="sync-btn danger" type="button">Déconnexion</button>
+        </div>
       </div>
       <div id="cycle-info" class="program-info">Chargement...</div>
 
       <nav class="nav-days">
-        <button class="nav-btn active" onclick="showSection(event, 'lundi')">LUN</button>
-        <button class="nav-btn" onclick="showSection(event, 'mardi')">MAR</button>
-        <button class="nav-btn" onclick="showSection(event, 'mercredi')">MER</button>
-        <button class="nav-btn" onclick="showSection(event, 'jeudi')">JEU</button>
-        <button class="nav-btn" onclick="showSection(event, 'vendredi')">VEN</button>
-        <button class="nav-btn" onclick="showSection(event, 'dimanche')">DIM</button>
-        <button class="nav-btn history-btn" onclick="showSection(event, 'history')">
+        <button class="nav-btn active" data-section="lundi" onclick="showSection(event, 'lundi')">
+          LUN
+        </button>
+        <button class="nav-btn" data-section="mardi" onclick="showSection(event, 'mardi')">MAR</button>
+        <button class="nav-btn" data-section="mercredi" onclick="showSection(event, 'mercredi')">
+          MER
+        </button>
+        <button class="nav-btn" data-section="jeudi" onclick="showSection(event, 'jeudi')">JEU</button>
+        <button class="nav-btn" data-section="vendredi" onclick="showSection(event, 'vendredi')">
+          VEN
+        </button>
+        <button class="nav-btn" data-section="samedi" onclick="showSection(event, 'samedi')">SAM</button>
+        <button class="nav-btn" data-section="dimanche" onclick="showSection(event, 'dimanche')">
+          DIM
+        </button>
+        <button class="nav-btn history-btn" data-section="history" onclick="showSection(event, 'history')">
           HISTORIQUE 📈
+        </button>
+        <button
+          class="nav-btn dashboard-btn"
+          data-section="dashboard"
+          onclick="showSection(event, 'dashboard')"
+        >
+          DASH ⚙️
         </button>
       </nav>
 
@@ -56,6 +75,7 @@
               <option value="mardi">MARDI (Lower)</option>
               <option value="jeudi">JEUDI (Dos/Biceps)</option>
               <option value="vendredi">VENDREDI (Épaules/Tri)</option>
+              <option value="samedi">SAMEDI (Custom)</option>
               <option value="dimanche">DIMANCHE (Ischios/Lomb)</option>
             </select>
           </div>
@@ -87,6 +107,10 @@
           <div class="chart-title chart-title--accent">ÉVOLUTION RÉPÉTITIONS</div>
           <canvas id="repsChart"></canvas>
         </div>
+      </div>
+
+      <div id="dashboard-section" class="section-container">
+        <div id="dashboard-root"></div>
       </div>
     </div>
 

@@ -48,6 +48,12 @@ body {
   gap: 2px;
 }
 
+.user-bar__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .user-bar__dim {
   color: var(--dim);
   font-size: 0.85rem;
@@ -119,6 +125,16 @@ h1 {
 .nav-btn.history-btn.active {
   background: var(--accent);
   color: black;
+}
+
+.nav-btn.dashboard-btn {
+  color: var(--green);
+}
+
+.nav-btn.dashboard-btn.active {
+  background: var(--green);
+  color: black;
+  box-shadow: 0 4px 12px rgba(50, 215, 75, 0.25);
 }
 
 .section-container {
@@ -445,6 +461,11 @@ canvas {
   font-weight: 700;
 }
 
+.sync-input[type="number"] {
+  text-align: left;
+  font-size: 1rem;
+}
+
 .sync-btn {
   padding: 12px 14px;
   background: var(--set-bg);
@@ -475,6 +496,97 @@ canvas {
 
 .sync-row .sync-status {
   flex: 1;
+}
+
+.dashboard-layout {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 900px) {
+  .dashboard-layout {
+    grid-template-columns: 1.2fr 0.8fr;
+    align-items: start;
+  }
+}
+
+.dashboard-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-controls select {
+  flex: 1;
+  min-width: 160px;
+}
+
+.dash-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-exo {
+  background: var(--set-bg);
+  border: 1px solid #444;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .dash-exo {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.dash-exo-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.dash-exo-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.dash-mini-btn {
+  padding: 10px 10px;
+  background: #1c1c1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dash-mini-btn.danger {
+  background: #3a1a1a;
+  border-color: #663333;
+}
+
+.dash-label {
+  font-size: 0.7rem;
+  color: var(--dim);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dash-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
 }
 
 @keyframes fadeIn {
