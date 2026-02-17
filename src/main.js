@@ -620,7 +620,11 @@ function initCloudUi() {
     localStorage.setItem("cloudEmail", email);
     setCloudStatus("Envoi du lien...");
     const res = await requestLoginEmail(email);
-    if (!res.ok) setCloudStatus("Erreur: " + res.reason);
+    if (!res.ok) {
+      const details = res.details ? ` (${res.details})` : "";
+      if (res.reason === "otp_send_failed") setCloudStatus("Erreur: envoi email impossible" + details);
+      else setCloudStatus("Erreur: " + res.reason + details);
+    }
     else setCloudStatus("Email envoyé. Clique le lien pour te connecter.");
   }
 
@@ -654,7 +658,10 @@ function initCloudUi() {
     if (!code) return;
     setCloudStatus("Connexion...");
     const res = await loginWithAccountCode(code);
-    if (!res.ok) setCloudStatus("Erreur: " + res.reason);
+    if (!res.ok) {
+      const details = res.details ? ` (${res.details})` : "";
+      setCloudStatus("Erreur: " + res.reason + details);
+    }
     else setStoredAccountCode(code);
   });
 

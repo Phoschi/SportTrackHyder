@@ -80,6 +80,7 @@ export default async function handler(req, res) {
 
     return json(res, 200, { ok: true });
   } catch (err) {
-    return json(res, 500, { ok: false, error: "internal_error" });
+    console.error("send-login: internal error", err);
+    return json(res, 500, { ok: false, error: "internal_error", details: "Check Vercel env vars and Supabase logs" });
   }
 }

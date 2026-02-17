@@ -59,7 +59,9 @@ Ensuite, dans l’app, section **Cloud Sync** :
 Optionnel (recommandé pour tester) : afficher le code dans l’email Supabase
 - Supabase → **Authentication** → **Email Templates**
 - Template **Magic Link** (ou celui utilisé pour “sign in”)
-- Ajoute une ligne du type : `Ton code: {{ .Data.account_code }}`
+- Ajoute une ligne du type (robuste) :
+  - `Ton code: {{ if .Data }}{{ index .Data "account_code" }}{{ end }}`
+  - La “preview” peut afficher les placeholders tels quels ; teste plutôt en te renvoyant un vrai email depuis l’app.
 
 Note : sans template, le code est quand même présent dans l’URL de redirection (paramètre `?account=...`) et l’app l’affiche après connexion.
 
