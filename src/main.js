@@ -1,4 +1,14 @@
 import Chart from "chart.js/auto";
+import {
+  getSession,
+  onAuthChange,
+  signInWithEmailOtp,
+  signOut,
+  enqueueUpsert,
+  syncCloudToLocal,
+  syncLocalToCloud
+} from "./cloudSync.js";
+import { isSupabaseConfigured } from "./supabase.js";
 
 // --- DATA DU PROGRAMME ---
 // SEMAINE 1 (IMPAIRE)
@@ -54,6 +64,7 @@ let currentWeek = 1;
 let currentSection = "lundi";
 let weightChartInstance = null;
 let repsChartInstance = null;
+let cloudStatusEl = null;
 
 function init() {
   const selector = document.getElementById("weekSelector");
@@ -69,6 +80,7 @@ function init() {
     currentWeek = Number.parseInt(savedWeek, 10);
     selector.value = String(currentWeek);
   }
+  initCloudUi();
   renderSection();
   updateHistExoSelect();
 }
@@ -296,7 +308,9 @@ function getKey(week, day, exoId) {
   return `trackV9_${week}_${day}_${exoId}`; // V9 pour ne pas mélanger
 }
 function saveData(week, day, exoId, data) {
+  data._ts = Date.now();
   localStorage.setItem(getKey(week, day, exoId), JSON.stringify(data));
+  enqueueUpsert(week, day, exoId, data);
 }
 function getData(week, day, exoId) {
   const d = localStorage.getItem(getKey(week, day, exoId));
@@ -408,6 +422,120 @@ function renderChart(id, type, labels, label, data, color, inst, setInst) {
   setInst(new Chart(ctx, cfg));
 }
 
+function setCloudStatus(text) {
+  if (cloudStatusEl) cloudStatusEl.innerText = text;
+}
+
+function initCloudUi() {
+  const mount = document.getElementById("sync-section");
+  if (!mount) return;
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="exo-title">Cloud Sync</div>
+        <div class="exo-subtitle">Sauvegarde multi-appareils</div>
+      </div>
+    </div>
+    <div class="sync-card-body">
+      <div class="sync-status" id="cloud-status">...</div>
+      <div class="sync-row" id="cloud-login-row">
+        <input id="cloud-email" class="sync-input" type="email" placeholder="Email" autocomplete="email" />
+        <button id="cloud-login" class="sync-btn primary" type="button">Lien</button>
+      </div>
+      <div class="sync-row" id="cloud-actions-row" style="display:none;">
+        <button id="cloud-pull" class="sync-btn" type="button">Récupérer</button>
+        <button id="cloud-push" class="sync-btn" type="button">Sauver</button>
+        <button id="cloud-logout" class="sync-btn danger" type="button">Quitter</button>
+      </div>
+    </div>
+  `;
+  mount.appendChild(card);
+
+  cloudStatusEl = document.getElementById("cloud-status");
+  const loginRow = document.getElementById("cloud-login-row");
+  const actionsRow = document.getElementById("cloud-actions-row");
+  const emailInput = document.getElementById("cloud-email");
+  const loginBtn = document.getElementById("cloud-login");
+  const pullBtn = document.getElementById("cloud-pull");
+  const pushBtn = document.getElementById("cloud-push");
+  const logoutBtn = document.getElementById("cloud-logout");
+
+  function setSignedInUi(session) {
+    if (session) {
+      loginRow.style.display = "none";
+      actionsRow.style.display = "flex";
+      setCloudStatus(`Connecté : ${session.user.email}`);
+    } else {
+      loginRow.style.display = "flex";
+      actionsRow.style.display = "none";
+      setCloudStatus("Déconnecté");
+    }
+  }
+
+  if (!isSupabaseConfigured) {
+    setCloudStatus("Cloud désactivé (variables VITE_SUPABASE_* manquantes)");
+    loginBtn.disabled = true;
+    pullBtn.disabled = true;
+    pushBtn.disabled = true;
+    logoutBtn.disabled = true;
+    return;
+  }
+
+  loginBtn.addEventListener("click", async () => {
+    const email = (emailInput.value || "").trim();
+    if (!email) return;
+    setCloudStatus("Envoi du lien...");
+    const { error } = await signInWithEmailOtp(email);
+    if (error) setCloudStatus("Erreur: " + error.message);
+    else setCloudStatus("Lien envoyé. Ouvre ton email pour te connecter.");
+  });
+
+  pullBtn.addEventListener("click", async () => {
+    setCloudStatus("Récupération du cloud...");
+    const res = await syncCloudToLocal();
+    if (!res.ok) setCloudStatus("Erreur cloud: " + res.reason);
+    else {
+      setCloudStatus(`OK: ${res.updated} entrées mises à jour depuis le cloud`);
+      if (currentSection !== "history") renderDay();
+      else updateHistoryCharts();
+    }
+  });
+
+  pushBtn.addEventListener("click", async () => {
+    setCloudStatus("Sauvegarde vers le cloud...");
+    const res = await syncLocalToCloud();
+    if (!res.ok) setCloudStatus("Erreur cloud: " + res.reason);
+    else setCloudStatus(`OK: ${res.pushed} entrées envoyées`);
+  });
+
+  logoutBtn.addEventListener("click", async () => {
+    await signOut();
+  });
+
+  getSession().then(async (session) => {
+    setSignedInUi(session);
+    if (session) {
+      setCloudStatus("Sync initiale...");
+      await syncCloudToLocal();
+      await syncLocalToCloud();
+      setCloudStatus(`Connecté : ${session.user.email} (sync OK)`);
+    }
+  });
+
+  onAuthChange(async (session) => {
+    setSignedInUi(session);
+    if (session) {
+      setCloudStatus("Sync initiale...");
+      await syncCloudToLocal();
+      await syncLocalToCloud();
+      setCloudStatus(`Connecté : ${session.user.email} (sync OK)`);
+    }
+  });
+}
+
 window.changeWeek = changeWeek;
 window.showSection = showSection;
 window.toggleSet = toggleSet;
@@ -419,4 +547,3 @@ window.updateHistSetSelect = updateHistSetSelect;
 window.updateHistoryCharts = updateHistoryCharts;
 
 window.addEventListener("DOMContentLoaded", init);
-

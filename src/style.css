@@ -384,6 +384,58 @@ canvas {
   max-height: 250px;
 }
 
+.sync-card-body {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sync-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.sync-input {
+  flex: 1;
+  background: #1c1c1e;
+  border: 1px solid #444;
+  padding: 12px;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sync-btn {
+  padding: 12px 14px;
+  background: var(--set-bg);
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: white;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sync-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.sync-btn.danger {
+  background: #3a1a1a;
+  border-color: #663333;
+}
+
+.sync-status {
+  font-size: 0.85rem;
+  color: var(--dim);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -394,4 +446,3 @@ canvas {
     transform: translateY(0);
   }
 }
-
