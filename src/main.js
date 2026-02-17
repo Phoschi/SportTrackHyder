@@ -68,6 +68,7 @@ let weightChartInstance = null;
 let repsChartInstance = null;
 let cloudStatusEl = null;
 let hasRenderedApp = false;
+let userBarEls = null;
 
 function init() {
   const selector = document.getElementById("weekSelector");
@@ -444,8 +445,35 @@ function showShell(name) {
 function ensureAppRendered() {
   if (hasRenderedApp) return;
   hasRenderedApp = true;
+  initUserBar();
   renderSection();
   updateHistExoSelect();
+}
+
+function initUserBar() {
+  if (userBarEls) return;
+  const bar = document.getElementById("user-bar");
+  const emailEl = document.getElementById("user-email");
+  const codeEl = document.getElementById("user-code");
+  const logoutBtn = document.getElementById("user-logout");
+  if (!bar || !emailEl || !codeEl || !logoutBtn) return;
+  userBarEls = { bar, emailEl, codeEl, logoutBtn };
+
+  logoutBtn.addEventListener("click", async () => {
+    await signOut();
+  });
+}
+
+function updateUserBar(session) {
+  if (!userBarEls) return;
+  if (!session) {
+    userBarEls.bar.style.display = "none";
+    return;
+  }
+  userBarEls.bar.style.display = "flex";
+  userBarEls.emailEl.innerText = `Connecté : ${session.user.email}`;
+  const code = localStorage.getItem("accountCode");
+  userBarEls.codeEl.innerText = code ? `Code : ${code}` : "";
 }
 
 function initGateUi() {
@@ -565,6 +593,7 @@ function initCloudUi() {
       codeActionsRow.style.display = "none";
       setCloudStatus("Déconnecté");
     }
+    updateUserBar(session);
   }
 
   if (!isSupabaseConfigured) {
@@ -683,6 +712,7 @@ function initCloudUi() {
     if (session) {
       showShell("app");
       ensureAppRendered();
+      updateUserBar(session);
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();
@@ -695,6 +725,7 @@ function initCloudUi() {
     if (session) {
       showShell("app");
       ensureAppRendered();
+      updateUserBar(session);
       setCloudStatus("Sync initiale...");
       await syncCloudToLocal();
       await syncLocalToCloud();
@@ -705,6 +736,7 @@ function initCloudUi() {
       codeInput.value = "";
       const skipAuth = localStorage.getItem("skipAuth") === "1";
       if (!skipAuth) showShell("auth");
+      updateUserBar(null);
     }
   });
 }

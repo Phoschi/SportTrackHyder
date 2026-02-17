@@ -29,6 +29,34 @@ body {
   margin: 0 auto;
 }
 
+.user-bar {
+  background: var(--card);
+  border: 1px solid #333;
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.user-bar__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-bar__dim {
+  color: var(--dim);
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 header {
   display: flex;
   justify-content: space-between;

@@ -56,7 +56,12 @@ Ensuite, dans l’app, section **Cloud Sync** :
 - soit entrer ton **code de compte** → `Connexion`
 - soit entrer ton **email** → `Envoyer lien` (tu reçois un email avec un lien qui te reconnecte + ton code dans l’URL)
 
-Optionnel : pour afficher explicitement le code dans l’email Supabase, tu peux modifier le template et afficher `{{ .Data.account_code }}`.
+Optionnel (recommandé pour tester) : afficher le code dans l’email Supabase
+- Supabase → **Authentication** → **Email Templates**
+- Template **Magic Link** (ou celui utilisé pour “sign in”)
+- Ajoute une ligne du type : `Ton code: {{ .Data.account_code }}`
+
+Note : sans template, le code est quand même présent dans l’URL de redirection (paramètre `?account=...`) et l’app l’affiche après connexion.
 
 Option CLI (si tu préfères) :
 
