@@ -39,7 +39,7 @@ npm run preview
 3) Activer l’auth email (OTP) dans Supabase
 4) Sur Vercel, ajouter les env vars :
    - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_SUPABASE_ANON_KEY` (clé **anon/public**, pas la clé **service_role/secret**)
 
 Ensuite, dans l’app, section **Cloud Sync** :
 - entrer ton email → bouton `Lien`
