@@ -3,6 +3,7 @@ import {
   getSession,
   onAuthChange,
   signInWithEmailOtp,
+  verifyEmailOtp,
   signOut,
   enqueueUpsert,
   syncCloudToLocal,
@@ -443,7 +444,15 @@ function initCloudUi() {
       <div class="sync-status" id="cloud-status">...</div>
       <div class="sync-row" id="cloud-login-row">
         <input id="cloud-email" class="sync-input" type="email" placeholder="Email" autocomplete="email" />
-        <button id="cloud-login" class="sync-btn primary" type="button">Lien</button>
+        <button id="cloud-send" class="sync-btn primary" type="button">Envoyer</button>
+      </div>
+      <div class="sync-row" id="cloud-otp-row" style="display:none;">
+        <input id="cloud-otp" class="sync-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Code (6 chiffres)" />
+        <button id="cloud-verify" class="sync-btn primary" type="button">Valider</button>
+        <button id="cloud-resend" class="sync-btn" type="button">Renvoyer</button>
+      </div>
+      <div class="sync-status" id="cloud-hint" style="display:none;">
+        Astuce : tu peux aussi cliquer le lien dans l’email.
       </div>
       <div class="sync-row" id="cloud-actions-row" style="display:none;">
         <button id="cloud-pull" class="sync-btn" type="button">Récupérer</button>
@@ -456,20 +465,30 @@ function initCloudUi() {
 
   cloudStatusEl = document.getElementById("cloud-status");
   const loginRow = document.getElementById("cloud-login-row");
+  const otpRow = document.getElementById("cloud-otp-row");
   const actionsRow = document.getElementById("cloud-actions-row");
   const emailInput = document.getElementById("cloud-email");
-  const loginBtn = document.getElementById("cloud-login");
+  const sendBtn = document.getElementById("cloud-send");
+  const otpInput = document.getElementById("cloud-otp");
+  const verifyBtn = document.getElementById("cloud-verify");
+  const resendBtn = document.getElementById("cloud-resend");
+  const hintEl = document.getElementById("cloud-hint");
   const pullBtn = document.getElementById("cloud-pull");
   const pushBtn = document.getElementById("cloud-push");
   const logoutBtn = document.getElementById("cloud-logout");
+  emailInput.value = localStorage.getItem("cloudEmail") || "";
 
   function setSignedInUi(session) {
     if (session) {
       loginRow.style.display = "none";
+      otpRow.style.display = "none";
+      hintEl.style.display = "none";
       actionsRow.style.display = "flex";
       setCloudStatus(`Connecté : ${session.user.email}`);
     } else {
       loginRow.style.display = "flex";
+      otpRow.style.display = "none";
+      hintEl.style.display = "none";
       actionsRow.style.display = "none";
       setCloudStatus("Déconnecté");
     }
@@ -477,20 +496,72 @@ function initCloudUi() {
 
   if (!isSupabaseConfigured) {
     setCloudStatus("Cloud désactivé (variables VITE_SUPABASE_* manquantes)");
-    loginBtn.disabled = true;
+    sendBtn.disabled = true;
+    verifyBtn.disabled = true;
+    resendBtn.disabled = true;
     pullBtn.disabled = true;
     pushBtn.disabled = true;
     logoutBtn.disabled = true;
     return;
   }
 
-  loginBtn.addEventListener("click", async () => {
-    const email = (emailInput.value || "").trim();
+  function getEmail() {
+    return (emailInput.value || "").trim().toLowerCase();
+  }
+
+  function showOtpUi() {
+    otpRow.style.display = "flex";
+    hintEl.style.display = "block";
+    otpInput.value = "";
+    otpInput.focus();
+  }
+
+  async function sendOtp() {
+    const email = getEmail();
     if (!email) return;
-    setCloudStatus("Envoi du lien...");
+    localStorage.setItem("cloudEmail", email);
+    setCloudStatus("Envoi du code...");
     const { error } = await signInWithEmailOtp(email);
+    if (error) {
+      setCloudStatus("Erreur: " + error.message);
+      return;
+    }
+    setCloudStatus("Email envoyé. Entre le code (ou clique le lien).");
+    showOtpUi();
+  }
+
+  sendBtn.addEventListener("click", sendOtp);
+  resendBtn.addEventListener("click", sendOtp);
+  emailInput.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      await sendOtp();
+    }
+  });
+
+  function sanitizeOtp(value) {
+    return String(value || "").replace(/\D/g, "").slice(0, 6);
+  }
+
+  otpInput.addEventListener("input", () => {
+    otpInput.value = sanitizeOtp(otpInput.value);
+  });
+
+  otpInput.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      await verifyBtn.click();
+    }
+  });
+
+  verifyBtn.addEventListener("click", async () => {
+    const email = getEmail();
+    const token = sanitizeOtp(otpInput.value);
+    if (!email || token.length !== 6) return;
+    setCloudStatus("Vérification du code...");
+    const { error } = await verifyEmailOtp(email, token);
     if (error) setCloudStatus("Erreur: " + error.message);
-    else setCloudStatus("Lien envoyé. Ouvre ton email pour te connecter.");
+    else setCloudStatus("Connecté. Sync en cours...");
   });
 
   pullBtn.addEventListener("click", async () => {
@@ -532,6 +603,10 @@ function initCloudUi() {
       await syncCloudToLocal();
       await syncLocalToCloud();
       setCloudStatus(`Connecté : ${session.user.email} (sync OK)`);
+    } else {
+      // Reset UI to clean state
+      emailInput.value = "";
+      otpInput.value = "";
     }
   });
 }

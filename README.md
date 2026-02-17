@@ -36,14 +36,19 @@ npm run preview
 
 1) Créer un projet Supabase
 2) Créer la table + policies en exécutant `supabase/schema.sql` dans le SQL editor
-3) Activer l’auth email (OTP) dans Supabase
+3) Activer l’auth email dans Supabase (Authentication → Providers → Email)
 4) Sur Vercel, ajouter les env vars :
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY` (clé **anon/public**, pas la clé **service_role/secret**)
 
+Notes :
+- Ne mets jamais tes clés dans `.env.example` / Git (même si “public”, c’est inutile et ça déclenche souvent la protection GitHub).
+- Les variables `VITE_*` sont visibles côté navigateur (c’est OK pour la clé **anon/public**).
+
 Ensuite, dans l’app, section **Cloud Sync** :
-- entrer ton email → bouton `Lien`
-- cliquer le lien reçu par email → la session s’active et la sync démarre
+- entrer ton email → bouton `Envoyer`
+- tu reçois un email avec un **code** (et généralement aussi un lien)
+- entrer le code → bouton `Valider` (ou cliquer le lien)
 
 Option CLI (si tu préfères) :
 

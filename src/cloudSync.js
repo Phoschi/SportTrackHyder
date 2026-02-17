@@ -28,11 +28,11 @@ function getLocalPayload(key) {
   }
 }
 
-function upsertPayload({ week, day, exoId, payload }) {
+function upsertPayload({ userId, week, day, exoId, payload }) {
   if (!supabase) return Promise.resolve({ ok: false, reason: "not_configured" });
   const updatedAtMs = typeof payload?._ts === "number" ? payload._ts : Date.now();
-  const row = { week, day, exo_id: exoId, payload, updated_at_ms: updatedAtMs };
-  return supabase.from(TABLE).upsert(row, { onConflict: "week,day,exo_id" });
+  const row = { user_id: userId, week, day, exo_id: exoId, payload, updated_at_ms: updatedAtMs };
+  return supabase.from(TABLE).upsert(row, { onConflict: "user_id,week,day,exo_id" });
 }
 
 let pending = new Map();
@@ -58,6 +58,15 @@ export async function signInWithEmailOtp(email) {
   });
 }
 
+export async function verifyEmailOtp(email, token) {
+  if (!supabase) throw new Error("Supabase non configuré");
+  return supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email"
+  });
+}
+
 export async function signOut() {
   if (!supabase) return;
   await supabase.auth.signOut();
@@ -74,7 +83,8 @@ export function enqueueUpsert(week, day, exoId, payload) {
     pending.clear();
     const session = await getSession();
     if (!session) return;
-    await Promise.allSettled(batch.map((item) => upsertPayload(item)));
+    const userId = session.user.id;
+    await Promise.allSettled(batch.map((item) => upsertPayload({ userId, ...item })));
   }, 800);
 }
 
@@ -108,6 +118,7 @@ export async function syncLocalToCloud() {
   const session = await getSession();
   if (!session) return { ok: false, reason: "not_signed_in" };
 
+  const userId = session.user.id;
   const keys = listLocalKeys();
   const rows = [];
   for (const key of keys) {
@@ -116,12 +127,18 @@ export async function syncLocalToCloud() {
     const payload = getLocalPayload(key);
     if (!payload) continue;
     const updatedAtMs = typeof payload._ts === "number" ? payload._ts : Date.now();
-    rows.push({ week: parsed.week, day: parsed.day, exo_id: parsed.exoId, payload, updated_at_ms: updatedAtMs });
+    rows.push({
+      user_id: userId,
+      week: parsed.week,
+      day: parsed.day,
+      exo_id: parsed.exoId,
+      payload,
+      updated_at_ms: updatedAtMs
+    });
   }
 
   if (rows.length === 0) return { ok: true, pushed: 0 };
-  const { error } = await supabase.from(TABLE).upsert(rows, { onConflict: "week,day,exo_id" });
+  const { error } = await supabase.from(TABLE).upsert(rows, { onConflict: "user_id,week,day,exo_id" });
   if (error) return { ok: false, reason: "upsert_failed", error };
   return { ok: true, pushed: rows.length };
 }
-

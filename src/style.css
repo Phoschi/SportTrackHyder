@@ -397,6 +397,10 @@ canvas {
   align-items: center;
 }
 
+.sync-row > * {
+  min-width: 0;
+}
+
 .sync-input {
   flex: 1;
   background: #1c1c1e;
