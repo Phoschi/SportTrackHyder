@@ -308,14 +308,41 @@ function getExoIndex(exoId) {
 function getKey(week, day, exoId) {
   return `trackV9_${week}_${day}_${exoId}`; // V9 pour ne pas mélanger
 }
+
+function getExerciseNameForKey(week, day, exoId) {
+  loadProgramFromCacheOrDefault();
+  const weekKey = week % 2 !== 0 ? "odd" : "even";
+  const activeProgram = programState?.weeks?.[weekKey] || DEFAULT_PROGRAM.weeks[weekKey];
+  const exo = (activeProgram?.[day] || []).find((e) => e?.id === exoId);
+  return exo?.name ? String(exo.name) : "";
+}
+
 function saveData(week, day, exoId, data) {
   data._ts = Date.now();
+  const exoName = getExerciseNameForKey(week, day, exoId);
+  if (exoName) data._exoName = exoName;
   localStorage.setItem(getKey(week, day, exoId), JSON.stringify(data));
   enqueueUpsert(week, day, exoId, data);
 }
 function getData(week, day, exoId) {
   const d = localStorage.getItem(getKey(week, day, exoId));
-  return d ? JSON.parse(d) : null;
+  if (!d) return null;
+  try {
+    return JSON.parse(d);
+  } catch {
+    return null;
+  }
+}
+
+function parseWorkoutStorageKey(key) {
+  if (!key || typeof key !== "string" || !key.startsWith("trackV9_")) return null;
+  const parts = key.split("_");
+  if (parts.length < 4) return null;
+  const week = Number.parseInt(parts[1], 10);
+  const day = parts[2];
+  const exoId = parts.slice(3).join("_");
+  if (!Number.isFinite(week) || week < 1 || !day || !exoId) return null;
+  return { week, day, exoId };
 }
 
 // --- HISTORY ---
@@ -328,12 +355,47 @@ function updateHistExoSelect() {
   const odd = programState?.weeks?.odd || DEFAULT_PROGRAM.weeks.odd;
   const even = programState?.weeks?.even || DEFAULT_PROGRAM.weeks.even;
   const merged = [...(odd[day] || []), ...(even[day] || [])];
-  const uniq = new Map();
+
+  const uniq = new Map(); // exoId -> { id, name, source }
+  const ordered = [];
   merged.forEach((exo) => {
-    if (!exo || exo.type === "static") return;
-    if (!uniq.has(exo.id)) uniq.set(exo.id, exo);
+    if (!exo || exo.type === "static" || !exo.id) return;
+    if (uniq.has(exo.id)) return;
+    uniq.set(exo.id, { id: exo.id, name: exo.name || exo.id, source: "program" });
+    ordered.push(exo.id);
   });
-  const exosToList = [...uniq.values()];
+
+  // Ajouter aussi les exos présents dans l'historique local (même si supprimés du programme),
+  // pour garder les stats visibles.
+  const localInfo = new Map(); // exoId -> { name, hasSets }
+  Object.keys(localStorage).forEach((key) => {
+    const parsed = parseWorkoutStorageKey(key);
+    if (!parsed || parsed.day !== day) return;
+    const info = localInfo.get(parsed.exoId) || { name: "", hasSets: false };
+    const payload = getData(parsed.week, parsed.day, parsed.exoId);
+    if (!payload) return;
+    if (!info.name && typeof payload._exoName === "string" && payload._exoName.trim()) info.name = payload._exoName;
+    if (!info.hasSets && Array.isArray(payload.sets)) info.hasSets = true;
+    localInfo.set(parsed.exoId, info);
+  });
+
+  const extras = [];
+  for (const [exoId, info] of localInfo.entries()) {
+    if (!info.hasSets) continue; // ignore routines (abdos etc)
+    if (uniq.has(exoId)) continue;
+    const isDeleted = !info.name;
+    const label = info.name || `Exercice supprimé : ${exoId}`;
+    uniq.set(exoId, { id: exoId, name: label, source: "history", isDeleted });
+    extras.push(exoId);
+  }
+  extras.sort((a, b) => {
+    const na = uniq.get(a)?.name || a;
+    const nb = uniq.get(b)?.name || b;
+    return na.localeCompare(nb, "fr", { sensitivity: "base" });
+  });
+  extras.forEach((id) => ordered.push(id));
+
+  const exosToList = ordered.map((id) => uniq.get(id)).filter(Boolean);
 
   if (exosToList.length === 0) {
     const opt = document.createElement("option");
@@ -349,13 +411,45 @@ function updateHistExoSelect() {
   exosToList.forEach((exo) => {
     const opt = document.createElement("option");
     opt.value = exo.id;
-    opt.text = exo.name;
+    opt.text = exo.source === "history" && !exo.isDeleted ? `${exo.name} (ancien)` : exo.name;
     exoSelect.add(opt);
   });
   updateHistSetSelect();
 }
 
 function updateHistSetSelect() {
+  const day = document.getElementById("hist-day-select").value;
+  const exoId = document.getElementById("hist-exo-select").value;
+  const setSelect = document.getElementById("hist-set-select");
+  if (!setSelect) return;
+
+  let maxSets = 0;
+  const odd = programState?.weeks?.odd || DEFAULT_PROGRAM.weeks.odd;
+  const even = programState?.weeks?.even || DEFAULT_PROGRAM.weeks.even;
+  const candidates = [...(odd[day] || []), ...(even[day] || [])];
+  candidates.forEach((exo) => {
+    if (!exo || exo.id !== exoId) return;
+    const n = Number.parseInt(exo.sets, 10);
+    if (Number.isFinite(n)) maxSets = Math.max(maxSets, n);
+  });
+
+  for (let w = 1; w <= 32; w++) {
+    const data = getData(w, day, exoId);
+    if (data?.sets && Array.isArray(data.sets)) maxSets = Math.max(maxSets, data.sets.length);
+  }
+
+  if (maxSets <= 0) maxSets = 5;
+  maxSets = Math.min(10, Math.max(1, maxSets));
+
+  const current = Number.parseInt(setSelect.value, 10) || 0;
+  setSelect.innerHTML = "";
+  for (let i = 0; i < maxSets; i++) {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.text = `Série ${i + 1}`;
+    setSelect.add(opt);
+  }
+  setSelect.value = String(Math.min(current, maxSets - 1));
   updateHistoryCharts();
 }
 

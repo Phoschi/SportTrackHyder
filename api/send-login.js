@@ -76,7 +76,14 @@ export default async function handler(req, res) {
         data: { account_code: accountCode, is_new: isNew }
       }
     });
-    if (otpErr) return json(res, 500, { ok: false, error: "otp_send_failed", message: otpErr.message });
+    if (otpErr) {
+      return json(res, 500, {
+        ok: false,
+        error: "otp_send_failed",
+        details: otpErr.message || "unknown_otp_error",
+        code: otpErr.status || null
+      });
+    }
 
     return json(res, 200, { ok: true });
   } catch (err) {

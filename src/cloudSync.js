@@ -92,16 +92,29 @@ export async function signOut() {
 
 export async function requestLoginEmail(email) {
   if (!isSupabaseConfigured) return { ok: false, reason: "not_configured" };
-  const res = await fetch("/api/send-login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email })
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.ok) {
-    return { ok: false, reason: body.error || "request_failed", details: body.details, code: body.code };
+  try {
+    const res = await fetch("/api/send-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body.ok) {
+      return {
+        ok: false,
+        reason: body.error || "request_failed",
+        details: body.details || body.message || "",
+        code: body.code
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "network_error",
+      details: err instanceof Error ? err.message : ""
+    };
   }
-  return { ok: true };
 }
 
 export function normalizeAccountCode(code) {
