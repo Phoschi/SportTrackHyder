@@ -1,8 +1,11 @@
 name: Keep Supabase Alive
 
 on:
+  push:   # 👈 AJOUTE ÇA
+    branches:
+      - master
   schedule:
-    - cron: "0 3 */2 * *" # toutes les 48h (03:00 UTC)
+    - cron: "0 3 */2 * *"
   workflow_dispatch:
 
 jobs:
