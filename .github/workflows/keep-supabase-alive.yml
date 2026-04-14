@@ -1,7 +1,7 @@
 name: Keep Supabase Alive
 
 on:
-  push:   # 👈 AJOUTE ÇA
+  push:
     branches:
       - master
   schedule:
@@ -15,5 +15,6 @@ jobs:
     steps:
       - name: Ping Supabase
         run: |
-          curl -X GET "https://cwalwgecwugfmixxjtgb.supabase.co/rest/v1/" \
+          curl -s -o /dev/null -w "%{http_code}" \
+          -X POST "https://cwalwgecwugfmixxjtgb.supabase.co/rest/v1/rpc/ping" \
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
